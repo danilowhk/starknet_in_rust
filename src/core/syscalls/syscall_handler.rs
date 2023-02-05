@@ -39,6 +39,7 @@ use std::collections::HashMap;
 //* ---------------------
 //* SyscallHandler Trait
 //* ---------------------
+use phf::phf_map;
 
 pub(crate) trait SyscallHandler {
     fn emit_event(
@@ -166,9 +167,9 @@ pub(crate) trait SyscallHandler {
         data: Vec<MaybeRelocatable>,
     ) -> Result<Relocatable, SyscallHandlerError>;
 
-    fn _write_syscall_response<T: WriteSyscallResponse>(
+    fn _write_syscall_response(
         &self,
-        response: &T,
+        response: &CallContractResponse,
         vm: &mut VirtualMachine,
         syscall_ptr: Relocatable,
     ) -> Result<(), SyscallHandlerError> {
@@ -343,6 +344,124 @@ impl SyscallHintProcessor<BusinessLogicSyscallHandler<CachedState<InMemoryStateR
     }
 }
 
+type SyscallFunc = fn(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError>;
+
+static SYSCALL_FUNC: phf::Map<&'static str, SyscallFunc> = phf_map! {
+    "syscall_handler.emit_event(segments=segments, syscall_ptr=ids.syscall_ptr)" => emit_event,
+    "syscall_handler.get_block_number(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_block_number,
+    "syscall_handler.get_block_timestamp(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_block_timestamp,
+    "syscall_handler.get_caller_address(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_caller_address,
+    "syscall_handler.get_sequencer_address(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_sequencer_address,
+    "syscall_handler.library_call(segments=segments, syscall_ptr=ids.syscall_ptr)" => library_call,
+    "syscall_handler.storage_read(segments=segments, syscall_ptr=ids.syscall_ptr)" => storage_read,
+    "syscall_handler.storage_write(segments=segments, syscall_ptr=ids.syscall_ptr)" => storage_write,
+    "syscall_handler.send_message_to_l1(segments=segments, syscall_ptr=ids.syscall_ptr)" => send_message_to_l1,
+    "syscall_handler.get_tx_signature(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_tx_signature,
+    "syscall_handler.get_tx_info(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_tx_info,
+    "syscall_handler.get_contract_address(segments=segments, syscall_ptr=ids.syscall_ptr)" => get_contract_address,
+
+};
+
+fn emit_event(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.emit_event(vm, syscall_ptr)
+}
+
+fn get_block_number(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_block_number(vm, syscall_ptr)
+}
+
+fn get_block_timestamp(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_block_timestamp(vm, syscall_ptr)
+}
+
+fn get_caller_address(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_caller_address(vm, syscall_ptr)
+}
+
+fn get_sequencer_address(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_sequencer_address(vm, syscall_ptr)
+}
+
+fn library_call(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.library_call(vm, syscall_ptr)
+}
+
+fn storage_read(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.storage_read(vm, syscall_ptr)
+}
+
+fn storage_write(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.storage_write(vm, syscall_ptr)
+}
+
+fn send_message_to_l1(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.send_message_to_l1(vm, syscall_ptr)
+}
+
+fn get_tx_signature(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_tx_signature(vm, syscall_ptr)
+}
+
+fn get_tx_info(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_tx_info(vm, syscall_ptr)
+}
+
+fn get_contract_address(
+    syscall_handler: &mut dyn SyscallHandler,
+    vm: &mut VirtualMachine,
+    syscall_ptr: Relocatable,
+) -> Result<(), SyscallHandlerError> {
+    syscall_handler.get_contract_address(vm, syscall_ptr)
+}
+
 impl<H: SyscallHandler> SyscallHintProcessor<H> {
     pub fn should_run_syscall_hint(
         &mut self,
@@ -372,58 +491,18 @@ impl<H: SyscallHandler> SyscallHintProcessor<H> {
             .downcast_ref::<HintProcessorData>()
             .ok_or(SyscallHandlerError::WrongHintData)?;
 
-        match &*hint_data.code {
-            DEPLOY => Err(SyscallHandlerError::NotImplemented),
-            EMIT_EVENT_CODE => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.emit_event(vm, syscall_ptr)
-            }
-            GET_BLOCK_NUMBER => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_block_number(vm, syscall_ptr)
-            }
-            GET_BLOCK_TIMESTAMP => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_block_timestamp(vm, syscall_ptr)
-            }
-            GET_CALLER_ADDRESS => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_caller_address(vm, syscall_ptr)
-            }
-            GET_SEQUENCER_ADDRESS => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_sequencer_address(vm, syscall_ptr)
-            }
-            LIBRARY_CALL => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.library_call(vm, syscall_ptr)
-            }
-            STORAGE_READ => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.storage_read(vm, syscall_ptr)
-            }
-            STORAGE_WRITE => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.storage_write(vm, syscall_ptr)
-            }
-            SEND_MESSAGE_TO_L1 => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.send_message_to_l1(vm, syscall_ptr)
-            }
-            GET_TX_SIGNATURE => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_tx_signature(vm, syscall_ptr)
-            }
-            GET_TX_INFO => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_tx_info(vm, syscall_ptr)
-            }
-            GET_CONTRACT_ADDRESS => {
-                let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
-                self.syscall_handler.get_contract_address(vm, syscall_ptr)
-            }
-            _ => Err(SyscallHandlerError::NotImplemented),
-        }
+        // What is afa?
+        // pub type SyscallFunc = fn(afa: &mut SyscallArgs) -> Result<(), SyscallHandlerError>;
+
+        let syscall_func = match SYSCALL_FUNC.get(&*hint_data.code) {
+            Some(f) => f,
+            None => return Err(SyscallHandlerError::NotImplemented),
+        };
+
+        let syscall_ptr = get_syscall_ptr(vm, &hint_data.ids_data, &hint_data.ap_tracking)?;
+        syscall_func(&mut self.syscall_handler, vm, syscall_ptr)?;
+
+        Ok(())
     }
 }
 
